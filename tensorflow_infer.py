@@ -12,6 +12,8 @@ from utils.anchor_decode import decode_bbox
 from utils.nms import single_class_non_max_suppression
 from load_model.tensorflow_loader import load_tf_model, tf_inference
 
+
+# 加载训练好的模型二进制文件
 sess, graph = load_tf_model('models/face_mask_detection.pb')
 # anchor configuration
 feature_map_sizes = [[33, 33], [17, 17], [9, 9], [5, 5], [3, 3]]
@@ -19,6 +21,7 @@ anchor_sizes = [[0.04, 0.056], [0.08, 0.11], [0.16, 0.22], [0.32, 0.45], [0.64, 
 anchor_ratios = [[1, 0.62, 0.42]] * 5
 
 # generate anchors
+# 生成 anchor，是重点，重点是理解anchor的概念，代码可不用完全看懂
 anchors = generate_anchors(feature_map_sizes, anchor_sizes, anchor_ratios)
 
 # for inference , the batch size is 1, the model output shape is [1, N, 4],
@@ -42,8 +45,10 @@ def inference(image,
     image_np = image_resized / 255.0  # 归一化到0~1
 
     image_exp = np.expand_dims(image_np, axis=0)
+    # 模型推理
     y_bboxes_output, y_cls_output = tf_inference(sess, graph, image_exp)
     # remove the batch dimension, for batch is always 1 for inference.
+    # 对得到的 output 进行解码
     y_bboxes = decode_bbox(anchors_exp, y_bboxes_output)[0]
     y_cls = y_cls_output[0]
     # To speed up, do single class NMS, not multiple classes NMS.
@@ -51,12 +56,13 @@ def inference(image,
     bbox_max_score_classes = np.argmax(y_cls, axis=1)
 
     # keep_idx is the alive bounding box after nms.
+    # NMS是目标检测的重点，需要熟悉其原理
     keep_idxs = single_class_non_max_suppression(y_bboxes,
                                                  bbox_max_scores,
                                                  conf_thresh=conf_thresh,
                                                  iou_thresh=iou_thresh,
                                                  )
-
+    # 可视化
     for idx in keep_idxs:
         conf = float(bbox_max_scores[idx])
         class_id = bbox_max_score_classes[idx]
@@ -99,12 +105,15 @@ def run_on_video(video_path, output_video_name, conf_thresh):
         return
     status = True
     idx = 0
+    # 死循环读取视频中的图像
     while status:
         start_stamp = time.time()
         status, img_raw = cap.read() # img_raw 就是frame
+        # opencv默认读取的图像是BGR格式，这里转换为RGB
         img_raw = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
         read_frame_stamp = time.time()
         if (status):
+            # 核心 检测模块
             inference(img_raw,
                       conf_thresh,
                       iou_thresh=0.5,
@@ -126,6 +135,7 @@ def run_on_video(video_path, output_video_name, conf_thresh):
 
 
 if __name__ == "__main__":
+    #  默认运行视频检测
     parser = argparse.ArgumentParser(description="Face Mask Detection")
     parser.add_argument('--img-mode', type=int, default=1, help='set 1 to run on image, 0 to run on video.')
     parser.add_argument('--img-path', type=str, help='path to your image.')
